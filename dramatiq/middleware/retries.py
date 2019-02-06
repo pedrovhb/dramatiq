@@ -69,17 +69,23 @@ class Retries(Middleware):
         retries = message.options.setdefault("retries", 0)
         max_retries = actor.options.get("max_retries", self.max_retries)
         retry_when = actor.options.get("retry_when", self.retry_when)
-        if retry_when is not None and not retry_when(retries, exception) or \
-           retry_when is None and max_retries is not None and retries >= max_retries:
+        retry_when_result = None if not retry_when else retry_when(retries, exception)
+
+        if retry_when is not None and not retry_when_result or \
+                retry_when is None and max_retries is not None and retries >= max_retries:
             self.logger.warning("Retries exceeded for message %r.", message.message_id)
             message.fail()
             return
 
-        message.options["retries"] += 1
-        message.options["traceback"] = traceback.format_exc(limit=30)
-        min_backoff = actor.options.get("min_backoff", self.min_backoff)
-        max_backoff = actor.options.get("max_backoff", self.max_backoff)
-        max_backoff = min(max_backoff, DEFAULT_MAX_BACKOFF)
-        _, backoff = compute_backoff(retries, factor=min_backoff, max_backoff=max_backoff)
-        self.logger.info("Retrying message %r in %d milliseconds.", message.message_id, backoff)
-        broker.enqueue(message, delay=backoff)
+        if isinstance(retry_when_result, int):
+            self.logger.info("Retrying message %r in %d milliseconds.", message.message_id, retry_when_result)
+            broker.enqueue(message, delay=retry_when_result)
+        else:
+            message.options["retries"] += 1
+            message.options["traceback"] = traceback.format_exc(limit=30)
+            min_backoff = actor.options.get("min_backoff", self.min_backoff)
+            max_backoff = actor.options.get("max_backoff", self.max_backoff)
+            max_backoff = min(max_backoff, DEFAULT_MAX_BACKOFF)
+            _, backoff = compute_backoff(retries, factor=min_backoff, max_backoff=max_backoff)
+            self.logger.info("Retrying message %r in %d milliseconds.", message.message_id, backoff)
+            broker.enqueue(message, delay=backoff)
