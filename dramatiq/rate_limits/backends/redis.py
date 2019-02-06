@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import redis
+import time
 
 from ..backend import RateLimiterBackend
 
@@ -90,7 +91,8 @@ class RedisBackend(RateLimiterBackend):
                     if value > maximum:
                         window = len(key_list)
                         next_available_ts = int(key.split('@')[-1]) + window + 1
-                        return False, next_available_ts
+                        delay_until_next_available = int((next_available_ts - time.time())) * 1000
+                        return False, delay_until_next_available
 
                     # Fetch keys again to account for net/server latency.
                     values: list = pipe.mget(keys() if callable(keys) else keys)
@@ -101,7 +103,8 @@ class RedisBackend(RateLimiterBackend):
                         oldest_job_ts = int(key_list[oldest_job_index].split('@')[-1])
                         window = len(values)
                         next_available_ts = oldest_job_ts + window + 1
-                        return False, next_available_ts
+                        delay_until_next_available = int((next_available_ts - time.time())) * 1000
+                        return False, delay_until_next_available
 
                     pipe.multi()
                     pipe.set(key, value, px=ttl)
