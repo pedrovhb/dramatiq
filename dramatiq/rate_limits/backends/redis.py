@@ -88,13 +88,20 @@ class RedisBackend(RateLimiterBackend):
                     value = int(pipe.get(key) or b"0")
                     value += amount
                     if value > maximum:
-                        return False
+                        window = len(key_list)
+                        next_available_ts = int(key.split('@')[-1]) + window + 1
+                        return False, next_available_ts
 
                     # Fetch keys again to account for net/server latency.
-                    values = pipe.mget(keys() if callable(keys) else keys)
+                    values: list = pipe.mget(keys() if callable(keys) else keys)
                     total = amount + sum(int(n) for n in values if n)
                     if total > maximum:
-                        return False
+
+                        oldest_job_index = len(values) - next(i for i, v in enumerate(values[::-1]) if v) - 1
+                        oldest_job_ts = int(key_list[oldest_job_index].split('@')[-1])
+                        window = len(values)
+                        next_available_ts = oldest_job_ts + window + 1
+                        return False, next_available_ts
 
                     pipe.multi()
                     pipe.set(key, value, px=ttl)

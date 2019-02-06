@@ -69,8 +69,11 @@ class RateLimiter:
 
         try:
             acquired = self._acquire()
+            next_available_ts = None
+            if isinstance(acquired, tuple):
+                acquired, next_available_ts = acquired
             if raise_on_failure and not acquired:
-                raise RateLimitExceeded("rate limit exceeded for key %(key)r" % vars(self))
+                raise RateLimitExceeded(("rate limit exceeded for key %(key)r" % vars(self), next_available_ts))
 
             yield acquired
         finally:
